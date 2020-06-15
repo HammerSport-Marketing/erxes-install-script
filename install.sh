@@ -101,8 +101,9 @@ echo "Installed Yarn successfully"
 # username that erxes will be installed in
 username=erxes
 
-# create a new user erxes if it does not exist
-id -u erxes &>/dev/null || useradd -m -s /bin/bash -U -G sudo $username
+# create a new user erxes
+useradd -m -s /bin/bash -U -G sudo $username
+# echo erxes:new_password | chpasswd
 
 cd /home/$username
 
@@ -124,13 +125,13 @@ erxes_integrations_dir=/home/$username/erxes-integrations
 su $username -c "mkdir -p $erxes_dir $erxes_api_dir $erxes_integrations_dir"
 
 # download erxes
-su $username -c "curl -L https://github.com/erxes/erxes/archive/0.14.1.tar.gz | tar --strip-components=1 -xz -C $erxes_root_dir"
+su $username -c "curl -L https://github.com/erxes/erxes/archive/0.14.0.tar.gz | tar --strip-components=1 -xz -C $erxes_root_dir"
 
 # download erxes-api
-su $username -c "curl -L https://github.com/erxes/erxes-api/archive/0.14.1.tar.gz | tar --strip-components=1 -xz -C $erxes_api_dir"
+su $username -c "curl -L https://github.com/erxes/erxes-api/archive/0.14.0.tar.gz | tar --strip-components=1 -xz -C $erxes_api_dir"
 
 # download integrations
-su $username -c "curl -L https://github.com/erxes/erxes-integrations/archive/0.10.3.tar.gz | tar --strip-components=1 -xz -C $erxes_integrations_dir"
+su $username -c "curl -L https://github.com/erxes/erxes-integrations/archive/0.14.0.tar.gz | tar --strip-components=1 -xz -C $erxes_integrations_dir"
 
 # install packages and build erxes
 su $username -c "cd $erxes_dir && yarn install && yarn build"
@@ -156,8 +157,7 @@ su $username -c "cd $erxes_integrations_dir && yarn install && yarn build"
 # install pm2 globally
 yarn global add  pm2
 
-JWT_TOKEN_SECRET=$(openssl rand -base64 24)
-MONGO_PASS=$(openssl rand -hex 16)
+JWT_TOKEN_SECRET=$(openssl rand -hex 16)
 
 # create an ecosystem.json in erxes home directory and change owner and permission
 cat <<EOF >/home/$username/ecosystem.json
@@ -171,15 +171,23 @@ cat <<EOF >/home/$username/ecosystem.json
       "env": {
         "PORT": 3300,
         "NODE_ENV": "production",
+        "HTTPS": false,
         "DEBUG": "erxes-api:*",
+        "DOMAIN": "http://$erxes_domain/api",
         "MAIN_APP_DOMAIN": "http://$erxes_domain",
+        "WIDGETS_DOMAIN": "http://$erxes_domain/widgets",
+        "INTEGRATIONS_API_DOMAIN": "http://$erxes_domain/integrations",
+        "CRONS_API_DOMAIN": "http://127.0.0.1:3600",
+        "WORKERS_API_DOMAIN": "http://127.0.0.1:3700",
         "LOGS_API_DOMAIN": "http://127.0.0.1:3800",
         "ENGAGES_API_DOMAIN": "http://127.0.0.1:3900",
-        "MONGO_URL": "mongodb://erxes:$MONGO_PASS@localhost/erxes?authSource=admin&replicaSet=rs0",
+        "MONGO_URL": "mongodb://localhost/erxes?replicaSet=rs0",
         "REDIS_HOST": "localhost",
         "REDIS_PORT": 6379,
         "REDIS_PASSWORD": "",
         "RABBITMQ_HOST": "amqp://localhost",
+        "PORT_CRONS": 3600,
+        "PORT_WORKERS": 3700,
         "JWT_TOKEN_SECRET": "$JWT_TOKEN_SECRET",
         "ELASTICSEARCH_URL": "http://localhost:9200"
       }
@@ -192,13 +200,9 @@ cat <<EOF >/home/$username/ecosystem.json
       "env": {
         "PORT_CRONS": 3600,
         "NODE_ENV": "production",
-        "PROCESS_NAME": "crons",
-        "DEBUG": "erxes-crons:*",
-        "MONGO_URL": "mongodb://erxes:$MONGO_PASS@localhost/erxes?authSource=admin&replicaSet=rs0",
-        "REDIS_HOST": "localhost",
-        "REDIS_PORT": 6379,
-        "REDIS_PASSWORD": "",
-        "RABBITMQ_HOST": "amqp://localhost"
+        "MONGO_URL": "mongodb://localhost/erxes?replicaSet=rs0",
+        "RABBITMQ_HOST": "amqp://localhost",
+        "DEBUG": "erxes-crons:*"
       }
     },
     {
@@ -206,17 +210,11 @@ cat <<EOF >/home/$username/ecosystem.json
       "cwd": "$erxes_api_dir",
       "script": "dist/workers",
       "log_date_format": "YYYY-MM-DD HH:mm Z",
-      "node_args": "--experimental-worker",
       "env": {
         "PORT_WORKERS": 3700,
         "NODE_ENV": "production",
-        "DEBUG": "erxes-workers:*",
-        "MONGO_URL": "mongodb://erxes:$MONGO_PASS@localhost/erxes?authSource=admin&replicaSet=rs0",
-        "REDIS_HOST": "localhost",
-        "REDIS_PORT": 6379,
-        "REDIS_PASSWORD": "",
-        "RABBITMQ_HOST": "amqp://localhost",
-        "JWT_TOKEN_SECRET": "$JWT_TOKEN_SECRET"
+        "MONGO_URL": "mongodb://localhost/erxes?replicaSet=rs0",
+        "DEBUG": "erxes-workers:*"
       }
     },
     {
@@ -240,13 +238,13 @@ cat <<EOF >/home/$username/ecosystem.json
       "env": {
         "PORT": 3900,
         "NODE_ENV": "production",
-        "DEBUG": "erxes-engages:*",
         "MAIN_API_DOMAIN": "http://$erxes_domain/api",
-        "MONGO_URL": "mongodb://erxes:$MONGO_PASS@localhost/erxes-engages?authSource=admin&replicaSet=rs0",
+        "MONGO_URL": "mongodb://localhost/erxes-engages?replicaSet=rs0",
         "RABBITMQ_HOST": "amqp://localhost",
         "REDIS_HOST": "localhost",
         "REDIS_PORT": 6379,
-        "REDIS_PASSWORD": ""
+        "REDIS_PASSWORD": "",
+        "DEBUG": "erxes-engages:*"
       }
     },
     {
@@ -257,9 +255,9 @@ cat <<EOF >/home/$username/ecosystem.json
       "env": {
         "PORT": 3800,
         "NODE_ENV": "production",
-        "DEBUG": "erxes-logs:*",
-        "MONGO_URL": "mongodb://erxes:$MONGO_PASS@localhost/erxes_logs?authSource=admin&replicaSet=rs0",
-        "RABBITMQ_HOST": "amqp://localhost"
+        "MONGO_URL": "mongodb://localhost/erxes_logs?replicaSet=rs0",
+        "RABBITMQ_HOST": "amqp://localhost",
+        "DEBUG_PREFIX": "erxes-logs"
       }
     },
     {
@@ -270,11 +268,10 @@ cat <<EOF >/home/$username/ecosystem.json
       "env": {
         "PORT": 3400,
         "NODE_ENV": "production",
-        "DEBUG": "erxes-integrations:*",
+        "MONGO_URL": "mongodb://localhost/erxes_integrations?replicaSet=rs0",
         "DOMAIN": "http://$erxes_domain/integrations",
         "MAIN_APP_DOMAIN": "http://$erxes_domain",
         "MAIN_API_DOMAIN": "http://$erxes_domain/api",
-        "MONGO_URL": "mongodb://erxes:$MONGO_PASS@localhost/erxes_integrations?authSource=admin&replicaSet=rs0",
         "RABBITMQ_HOST": "amqp://localhost",
         "REDIS_HOST": "localhost",
         "REDIS_PORT": 6379,
@@ -288,9 +285,6 @@ EOF
 chown $username:$username /home/$username/ecosystem.json
 chmod 644 /home/$username/ecosystem.json
 
-# set mongod password
-result=$(mongo --eval "db=db.getSiblingDB('admin'); db.createUser({ user: 'erxes', pwd: \"$MONGO_PASS\", roles: [ 'root' ] })" )
-echo $result
 
 # set up mongod ReplicaSet
 systemctl stop mongod
@@ -305,20 +299,18 @@ systemLog:
   logAppend: true
   path: /var/log/mongodb/mongod.log
 net:
-  bindIp: localhost
+  bindIp: localhost,$(hostname),$(hostname -I | sed 's/ /,/')
 processManagement:
   timeZoneInfo: /usr/share/zoneinfo
 replication:
   replSetName: "rs0"
-security:
-  authorization: enabled
 EOF
 systemctl start mongod
 curl https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh > /usr/local/bin/wait-for-it.sh
 chmod +x /usr/local/bin/wait-for-it.sh
 /usr/local/bin/wait-for-it.sh --timeout=0 localhost:27017
 while true; do
-    healt=$(mongo --eval "db=db.getSiblingDB('admin'); db.auth('erxes', \"$MONGO_PASS\"); rs.initiate().ok" --quiet)
+    healt=$(mongo --eval "rs.initiate().ok" --quiet)
     if [ $healt -eq 0 ]; then
         break
     fi
@@ -352,11 +344,10 @@ pip3 install mongo-connector==3.1.1 \
     && pip3 install elastic2-doc-manager==1.0.0 \
     && pip3 install python-dotenv==0.11.0
 
-mkdir -p /var/log/mongo-connector/
 
 # elkSyncer env
 cat <<EOF >$erxes_syncer_dir/.env
-MONGO_URL=mongodb://erxes:$MONGO_PASS@localhost/erxes?authSource=admin&replicaSet=rs0
+MONGO_URL=mongodb://localhost/erxes?replicaSet=rs0
 ELASTICSEARCH_URL=http://localhost:9200
 EOF
 
@@ -365,7 +356,6 @@ cat <<EOF >/lib/systemd/system/erxes-api-elk-syncer.service
 Description=erxes-api-elk-syncer
 Documentation=https://docs.erxes.io
 After=network.target
-
 [Service]
 WorkingDirectory=$erxes_syncer_dir
 ExecStart=/usr/bin/python3 $erxes_syncer_dir/main.py
@@ -373,7 +363,6 @@ ExecStop=/bin/kill -INT $MAINPID
 ExecReload=/bin/kill -TERM $MAINPID
 Restart=on-failure
 Type=simple
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -389,22 +378,18 @@ server {
         listen 80;
         
         server_name $erxes_domain;
-
         root /home/erxes/;
         index index.html;
         
         error_log /var/log/nginx/erxes.error.log;
-
         location / {
                 root $erxes_dir/build;
                 index index.html;
                 error_log /var/log/nginx/erxes.error.log;
-
                 location / {
                         try_files \$uri /index.html;
                 }
         }
-
         # widgets is running on 3200 port.
         location /widgets/ {
                 proxy_pass http://127.0.0.1:3200/;
@@ -415,7 +400,6 @@ server {
                 proxy_set_header Upgrade \$http_upgrade;
                 proxy_set_header Connection "Upgrade";
         }
-
         # api project is running on 3300 port.
         location /api/ {
                 proxy_pass http://127.0.0.1:3300/;
@@ -440,12 +424,6 @@ server {
 EOF
 # reload nginx service
 systemctl reload nginx
-
-## setting up ufw firewall
-echo 'y' | ufw enable
-ufw allow 22
-ufw allow 80
-ufw allow 443
 
 echo
 echo -e "\e[32mInstallation complete\e[0m"
